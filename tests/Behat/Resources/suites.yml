@@ -1,0 +1,10 @@
+# Put your Behat suites definitions here
+
+default:
+    suites:
+        greeting_customer:
+            contexts:
+                - planetride_sylius_ai_audit.context.ui.shop.welcome
+
+            filters:
+                tags: "@greeting_customer"
