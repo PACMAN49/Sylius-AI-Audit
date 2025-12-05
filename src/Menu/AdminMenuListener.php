@@ -12,11 +12,13 @@ final class AdminMenuListener
     {
         $menu = $event->getMenu();
 
-        // Ajout sous le menu principal (adapter si besoin : catalog/configuration/sales)
-        $reports = $menu->addChild('planetride_ai_audit', [
-            'route' => 'planetride_sylius_ai_audit_static_welcome', // adapte à ta route
+        $configuration = $menu->getChild('configuration');
+        $parent = $configuration ?? $menu;
+
+        $settings = $parent->addChild('planetride_ai_audit_settings', [
+            'route' => 'planetride_sylius_ai_audit_admin_settings',
         ]);
-        $reports->setLabel('AI Audit');
-        $reports->setLabelAttribute('icon', 'chart bar'); // optionnel, icône Semantic UI
+        $settings->setLabel('AI Audit');
+        $settings->setLabelAttribute('icon', 'cog');
     }
 }

@@ -1,1 +1,18 @@
-# Define your own admin routes here
+planetride_sylius_ai_audit_admin_ai_audit:
+    path: /admin/ai-audit/products/{id}/audit
+    controller: PlanetRide\SyliusAiAuditPlugin\Controller\Admin\AiAuditController::aiAuditAction
+    methods: [GET]
+    requirements:
+        id: '\d+'
+
+planetride_sylius_ai_audit_admin_ai_audit_view:
+    path: /admin/ai-audit/products/{id}
+    controller: PlanetRide\SyliusAiAuditPlugin\Controller\Admin\AiAuditController::getStoredAuditAction
+    methods: [GET]
+    requirements:
+        id: '\d+'
+
+planetride_sylius_ai_audit_admin_settings:
+    path: /admin/ai-audit/settings
+    controller: PlanetRide\SyliusAiAuditPlugin\Controller\Admin\AiAuditSettingsController
+    methods: [GET, POST]

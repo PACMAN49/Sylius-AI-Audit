@@ -1,0 +1,191 @@
+{% set form = hookable_metadata.context.form ?? null %}
+{% set product = hookable_metadata.context.resource ?? (form is not null ? form.vars.data : null) %}
+{% set audit_url = product is not null and product.id is not null ? path('planetride_sylius_ai_audit_admin_ai_audit', {'id': product.id}) : null %}
+{% set audit_view_url = product is not null and product.id is not null ? path('planetride_sylius_ai_audit_admin_ai_audit_view', {'id': product.id}) : null %}
+
+<div class="tab-pane {% if hookable_metadata.configuration.active|default(false) %}show active{% endif %}" id="product-ai-audit" role="tabpanel" tabindex="0">
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2 id="product-ai-audit" class="card-title">
+                Ai Audit
+            </h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Lancez un audit IA du contenu produit : score /100 + liste d’actions prioritaires.
+            </p>
+            <div class="mb-3">
+                <label class="form-label d-flex align-items-center gap-2" for="ai-audit-score">
+                    Score
+                    <span id="ai-audit-score-label" class="badge bg-secondary">-</span>
+                </label>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar" id="ai-audit-score-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+            <div class="row g-3 align-items-end">
+                <div class="col">
+                    <label class="form-label" for="ai-audit-retour">Retour</label>
+                    <textarea class="form-control" id="ai-audit-retour" name="ai-audit-retour" rows="6" readonly placeholder="Score et audit apparaitront ici"></textarea>
+                    <p class="text-muted small mb-0 mt-1 d-none" id="ai-audit-updated-wrapper">Dernier audit : <span id="ai-audit-updated-at"></span></p>
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-primary" id="ai-audit-run" {% if audit_url is null %}disabled{% endif %} data-audit-url="{{ audit_url }}">
+                        Lancer l'audit
+                    </button>
+                </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0" id="ai-audit-status"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const runButton = document.getElementById('ai-audit-run');
+        const retourInput = document.getElementById('ai-audit-retour');
+        const statusMessage = document.getElementById('ai-audit-status');
+        const scoreBar = document.getElementById('ai-audit-score-bar');
+        const scoreLabel = document.getElementById('ai-audit-score-label');
+        const viewUrl = "{{ audit_view_url }}";
+        const navBadge = document.getElementById('ai-audit-nav-score');
+
+        if (!runButton || !retourInput || !scoreBar || !scoreLabel) {
+            return;
+        }
+
+        const setStatus = (message, variant) => {
+            statusMessage.textContent = message;
+            statusMessage.classList.remove('text-danger', 'text-success');
+
+            if (variant) {
+                statusMessage.classList.add(variant);
+            }
+        };
+
+        const setScore = (score) => {
+            const safeScore = Math.max(0, Math.min(100, Number.isFinite(score) ? score : 0));
+            const red = Math.round(255 - (safeScore * 2.55));
+            const green = Math.round(safeScore * 2.55);
+            const color = `rgb(${red}, ${green}, 80)`;
+
+            scoreBar.style.width = `${safeScore}%`;
+            scoreBar.style.backgroundColor = color;
+            scoreBar.setAttribute('aria-valuenow', String(safeScore));
+            scoreLabel.textContent = `${safeScore}/100`;
+            scoreLabel.classList.remove('bg-secondary');
+            scoreLabel.style.backgroundColor = color;
+
+            if (navBadge) {
+                navBadge.textContent = `${safeScore}`;
+                navBadge.style.backgroundColor = color;
+                navBadge.style.color = '#fff';
+                navBadge.classList.remove('bg-secondary');
+                navBadge.classList.remove('d-none');
+            }
+        };
+
+        const extractScore = (text) => {
+            if (!text) {
+                return null;
+            }
+
+            const match = text.match(/Score:\s*(\d{1,3})/i);
+            if (!match) {
+                return null;
+            }
+
+            const parsed = parseInt(match[1], 10);
+            if (Number.isNaN(parsed)) {
+                return null;
+            }
+
+            return Math.max(0, Math.min(100, parsed));
+        };
+
+        const bootstrapExisting = async () => {
+            if (!viewUrl) {
+                return;
+            }
+
+            try {
+                const response = await fetch(viewUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                if (!response.ok) {
+                    return;
+                }
+
+                const payload = await response.json();
+                if (payload.retour) {
+                    retourInput.value = payload.retour;
+                }
+
+                if (payload.score !== null && payload.score !== undefined) {
+                    setScore(payload.score);
+                } else if (payload.retour) {
+                    const extracted = extractScore(payload.retour);
+                    if (extracted !== null) {
+                        setScore(extracted);
+                    }
+                }
+
+                if (payload.updatedAt) {
+                    const wrapper = document.getElementById('ai-audit-updated-wrapper');
+                    const dateNode = document.getElementById('ai-audit-updated-at');
+                    if (wrapper && dateNode) {
+                        const date = new Date(payload.updatedAt);
+                        if (!isNaN(date.getTime())) {
+                            dateNode.textContent = date.toLocaleString();
+                            wrapper.classList.remove('d-none');
+                        }
+                    }
+                }
+            } catch (e) {
+                // ignore initial load errors
+            }
+        };
+
+        bootstrapExisting();
+
+        runButton.addEventListener('click', async () => {
+            const url = runButton.getAttribute('data-audit-url');
+
+            if (!url) {
+                setStatus('Aucun produit selectionne pour lancer l audit.', 'text-danger');
+                return;
+            }
+
+            setStatus('Audit en cours...');
+            runButton.setAttribute('disabled', 'disabled');
+
+            try {
+                const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+
+                if (!response.ok) {
+                    throw new Error('Reponse inattendue du serveur.');
+                }
+
+                const payload = await response.json();
+
+                if (!Object.prototype.hasOwnProperty.call(payload, 'retour')) {
+                    throw new Error('Reponse JSON invalide.');
+                }
+
+                const text = payload.retour;
+                retourInput.value = text;
+
+                const score = extractScore(text);
+                if (score !== null) {
+                    setScore(score);
+                } else {
+                    setScore(0);
+                }
+
+                setStatus('Audit termine.', 'text-success');
+            } catch (error) {
+                setStatus(error.message || 'Impossible de lancer l audit.', 'text-danger');
+            } finally {
+                runButton.removeAttribute('disabled');
+            }
+        });
+    })();
+</script>

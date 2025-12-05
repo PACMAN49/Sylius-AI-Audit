@@ -22,3 +22,8 @@
 .env.local
 .editorconfig
 node_modules
+
+/public/
+.ddev/addon-metadata/phpmyadmin/manifest.yaml
+.ddev/commands/host/phpmyadmin
+.ddev/docker-compose.*

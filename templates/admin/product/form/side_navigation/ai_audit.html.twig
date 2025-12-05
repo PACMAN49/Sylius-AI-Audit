@@ -1,0 +1,11 @@
+<button
+    type="button"
+    class="list-group-item list-group-item-action {% if hookable_metadata.configuration.active|default(false) %}active{% endif %}"
+    data-bs-toggle="tab"
+    data-bs-target="#product-ai-audit"
+    role="tab"
+    id="ai-audit-nav-btn"
+>
+    Ai Audit
+    <span id="ai-audit-nav-score" class="badge bg-secondary ms-2 d-none">-</span>
+</button>

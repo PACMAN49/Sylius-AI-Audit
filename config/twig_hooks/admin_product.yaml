@@ -1,0 +1,10 @@
+sylius_twig_hooks:
+    hooks:
+        'sylius_admin.product.update.content.form.side_navigation':
+            ai_audit:
+                template: '@SyliusAiAuditPlugin/admin/product/form/side_navigation/ai_audit.html.twig'
+                priority: 50
+        'sylius_admin.product.update.content.form.sections':
+            ai_audit:
+                template: '@SyliusAiAuditPlugin/admin/product/form/sections/ai_audit.html.twig'
+                priority: 50
