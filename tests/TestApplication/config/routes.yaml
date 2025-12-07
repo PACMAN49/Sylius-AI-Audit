@@ -1,5 +1,2 @@
 planetride_sylius_ai_audit_admin:
     resource: "@SyliusAiAuditPlugin/config/routes/admin.yaml"
-
-planetride_sylius_ai_audit_shop:
-    resource: "@SyliusAiAuditPlugin/config/routes/shop.yaml"

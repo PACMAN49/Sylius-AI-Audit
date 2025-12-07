@@ -10,7 +10,6 @@
     </imports>
 
     <services>
-        <service id="PlanetRide\SyliusAiAuditPlugin\Controller\GreetingController" autowire="true" autoconfigure="true" public="true" />
         <service id="PlanetRide\SyliusAiAuditPlugin\Controller\Admin\AiAuditController" autowire="true" autoconfigure="true" public="true" />
         <service id="PlanetRide\SyliusAiAuditPlugin\Controller\Admin\AiAuditSettingsController" autowire="true" autoconfigure="true" public="true" />
         <service id="planetride_sylius_ai_audit.menu.admin_listener" class="PlanetRide\SyliusAiAuditPlugin\Menu\AdminMenuListener">
@@ -19,6 +18,10 @@
 
         <service id="planetride_sylius_ai_audit.settings_provider" class="PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditSettingsProvider" public="true" autowire="true" autoconfigure="true" />
         <service id="PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditSettingsProvider" alias="planetride_sylius_ai_audit.settings_provider" public="true" />
+
+        <service id="PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptVariables" autowire="true" autoconfigure="true" public="true" />
+        <service id="PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptRenderer" autowire="true" autoconfigure="true" public="true" />
+        <service id="PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptValidator" autowire="true" autoconfigure="true" public="true" />
 
         <!-- Put your services here -->
     </services>

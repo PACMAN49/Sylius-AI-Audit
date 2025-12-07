@@ -23,17 +23,15 @@
                     <div class="progress-bar" id="ai-audit-score-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                 </div>
             </div>
-            <div class="row g-3 align-items-end">
-                <div class="col">
-                    <label class="form-label" for="ai-audit-retour">Retour</label>
-                    <textarea class="form-control" id="ai-audit-retour" name="ai-audit-retour" rows="6" readonly placeholder="Score et audit apparaitront ici"></textarea>
-                    <p class="text-muted small mb-0 mt-1 d-none" id="ai-audit-updated-wrapper">Dernier audit : <span id="ai-audit-updated-at"></span></p>
-                </div>
-                <div class="col-auto">
-                    <button type="button" class="btn btn-primary" id="ai-audit-run" {% if audit_url is null %}disabled{% endif %} data-audit-url="{{ audit_url }}">
-                        Lancer l'audit
-                    </button>
-                </div>
+            <div class="mb-3">
+                <label class="form-label" for="ai-audit-retour">Retour</label>
+                <textarea class="form-control" id="ai-audit-retour" name="ai-audit-retour" rows="15" readonly placeholder="Score et audit apparaitront ici"></textarea>
+                <p class="text-muted small mb-0 mt-1 d-none" id="ai-audit-updated-wrapper">Dernier audit : <span id="ai-audit-updated-at"></span></p>
+            </div>
+            <div class="mb-3 d-grid">
+                <button type="button" class="btn btn-primary" id="ai-audit-run" {% if audit_url is null %}disabled{% endif %} data-audit-url="{{ audit_url }}">
+                    Lancer l'audit
+                </button>
             </div>
             <p class="text-muted small mt-2 mb-0" id="ai-audit-status"></p>
         </div>

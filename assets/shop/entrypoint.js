@@ -1,1 +1,1 @@
-import './js/greetings';
+// No shop assets at the moment.

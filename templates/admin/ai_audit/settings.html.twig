@@ -1,39 +1,53 @@
 {% extends '@SyliusAdmin/shared/layout/base.html.twig' %}
 
 {% block body %}
-    <div class="container-fluid">
-        <div class="row justify-content-center">
-            <div class="col-lg-10 col-xl-8">
-                <div class="card shadow-sm mt-4">
-                    <div class="card-header">
-                        <h1 class="card-title mb-0">Configuration Ai Audit</h1>
-                    </div>
-                    <div class="card-body">
-                        {% for label, messages in app.flashes %}
-                            {% for message in messages %}
-                                <div class="alert alert-{{ label }}">{{ message }}</div>
-                            {% endfor %}
-                        {% endfor %}
+    {% include '@SyliusAdmin/shared/crud/common/sidebar.html.twig' %}
 
-                        {{ form_start(form) }}
-                            <div class="mb-3">
-                                {{ form_label(form.systemPrompt) }}
-                                {{ form_widget(form.systemPrompt, {'attr': {'class': 'form-control w-100'}}) }}
-                                {{ form_help(form.systemPrompt) }}
-                                {{ form_errors(form.systemPrompt) }}
-                            </div>
-                            <div class="mb-3">
-                                {{ form_label(form.userPrompt) }}
-                                {{ form_widget(form.userPrompt, {'attr': {'class': 'form-control w-100'}}) }}
-                                {{ form_help(form.userPrompt) }}
-                                {{ form_errors(form.userPrompt) }}
-                            </div>
-                            {{ form_row(form.save) }}
-                        {{ form_end(form) }}
+    <div class="page">
+        {% include '@SyliusAdmin/shared/crud/common/navbar.html.twig' %}
 
-                        {% if updatedAt %}
-                            <p class="text-muted small mt-3 mb-0">Dernière mise à jour : {{ updatedAt|date('Y-m-d H:i') }}</p>
-                        {% endif %}
+        <div class="page-wrapper">
+            <div class="container-fluid">
+                <div class="row justify-content-center">
+                    <div class="col-lg-10 col-xl-8">
+                        <div class="card shadow-sm mt-4">
+                            <div class="card-header">
+                                <h1 class="card-title mb-0">Configuration Ai Audit</h1>
+                            </div>
+                            <div class="card-body">
+                                {% if allowedVariables is defined %}
+                                    <p class="text-muted">
+                                        Variables disponibles :
+                                        <code>{{ allowedVariables|join('</code>, <code>')|raw }}</code>
+                                    </p>
+                                {% endif %}
+                                {% for label, messages in app.flashes %}
+                                    {% for message in messages %}
+                                        <div class="alert alert-{{ label }}">{{ message }}</div>
+                                    {% endfor %}
+                                {% endfor %}
+
+                                {{ form_start(form) }}
+                                    <div class="mb-3">
+                                        {{ form_label(form.systemPrompt) }}
+                                        {{ form_widget(form.systemPrompt, {'attr': {'class': 'form-control w-100'}}) }}
+                                        {{ form_help(form.systemPrompt) }}
+                                        {{ form_errors(form.systemPrompt) }}
+                                    </div>
+                                    <div class="mb-3">
+                                        {{ form_label(form.userPrompt) }}
+                                        {{ form_widget(form.userPrompt, {'attr': {'class': 'form-control w-100'}}) }}
+                                        {{ form_help(form.userPrompt) }}
+                                        {{ form_errors(form.userPrompt) }}
+                                    </div>
+                                    {{ form_row(form.save) }}
+                                {{ form_end(form) }}
+
+                                {% if updatedAt %}
+                                    <p class="text-muted small mt-3 mb-0">Dernière mise à jour : {{ updatedAt|date('Y-m-d H:i') }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

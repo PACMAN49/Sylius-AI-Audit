@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace PlanetRide\SyliusAiAuditPlugin\Controller\Admin;
 
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
+use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptRenderer;
+use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptVariables;
 use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditSettingsProvider;
 use Sylius\Component\Product\Repository\ProductRepositoryInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -23,6 +25,8 @@ final class AiAuditController extends AbstractController
         private readonly HttpClientInterface $httpClient,
         private readonly EntityManagerInterface $entityManager,
         private readonly AiAuditSettingsProvider $settingsProvider,
+        private readonly AiAuditPromptRenderer $promptRenderer,
+        private readonly AiAuditPromptVariables $promptVariables,
     ) {
     }
 
@@ -78,7 +82,7 @@ final class AiAuditController extends AbstractController
         $metaKeywords = (string) $translation->getMetaKeywords();
 
         $settings = $this->settingsProvider->getSettings();
-        $systemPrompt = $settings->getSystemPrompt() ?? '';
+        $systemPromptTemplate = $settings->getSystemPrompt() ?? '';
 
         $productData = implode("\n", [
             'Titre (Name) :',
@@ -106,7 +110,10 @@ final class AiAuditController extends AbstractController
             '(non fourni ici)',
         ]);
 
-        $userPrompt = $settings->getUserPrompt() ?: implode("\n", [
+        $context = $this->promptVariables->buildContext($product, $translation);
+        $context['productData'] = $productData;
+
+        $userPromptTemplate = $settings->getUserPrompt() ?: implode("\n", [
             'Voici les contenus de la fiche produit à auditer :',
             '',
             $productData,
@@ -114,6 +121,9 @@ final class AiAuditController extends AbstractController
             'Calcule la note sur 100 selon les critères décrits dans le message système,',
             'puis liste tous les problèmes concrets à corriger (même mineurs) dans le bloc "Audit:".',
         ]);
+
+        $systemPrompt = $this->promptRenderer->render($systemPromptTemplate, $context);
+        $userPrompt = $this->promptRenderer->render($userPromptTemplate, $context);
 
         try {
             $response = $this->httpClient->request('POST', 'https://api.openai.com/v1/responses', [
