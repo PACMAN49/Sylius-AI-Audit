@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PlanetRideSyliusAiAuditPlugin;
+namespace PlanetRideSyliusAiAuditPlugin\Migrations;
 
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
