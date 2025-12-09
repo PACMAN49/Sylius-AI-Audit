@@ -1,5 +1,17 @@
 {% set form = hookable_metadata.context.form ?? null %}
 {% set product = hookable_metadata.context.resource ?? (form is not null ? form.vars.data : null) %}
+
+{% set locales = [] %}
+{% if product is not null %}
+    {% for translation in product.translations %}
+        {% if translation.locale not in locales %}
+            {% set locales = locales|merge([translation.locale]) %}
+        {% endif %}
+    {% endfor %}
+{% endif %}
+
+{% set current_locale = app.request.locale ?? locales|first %}
+
 {% set audit_url = product is not null and product.id is not null ? path('planetride_sylius_ai_audit_admin_ai_audit', {'id': product.id}) : null %}
 {% set audit_view_url = product is not null and product.id is not null ? path('planetride_sylius_ai_audit_admin_ai_audit_view', {'id': product.id}) : null %}
 
@@ -11,9 +23,39 @@
             </h2>
         </div>
         <div class="card-body">
-            <p class="text-muted mb-3">
-                Lancez un audit IA du contenu produit : score /100 + liste d’actions prioritaires.
-            </p>
+            <div class="mb-3">
+                <label class="form-label d-flex align-items-center gap-2 mb-2">
+                    Scores déjà audités
+                </label>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-2">
+                        <thead>
+                            <tr>
+                                <th class="text-nowrap">Locale</th>
+                                <th class="text-nowrap">Score</th>
+                                <th class="text-nowrap">Dernier audit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ai-audit-table-body">
+                            <tr>
+                                <td colspan="3" class="text-muted small">Chargement des audits...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% if locales is not empty %}
+                <div class="mb-3">
+                    <label class="form-label" for="ai-audit-locale">Locale de l'audit</label>
+                    <select class="form-select" id="ai-audit-locale" name="ai-audit-locale">
+                        {% for locale in locales %}
+                            <option value="{{ locale }}" {% if locale == current_locale %}selected{% endif %}>{{ locale }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% else %}
+                <p class="text-warning small">Aucune traduction trouvée pour ce produit. Ajoutez au moins une traduction pour lancer un audit.</p>
+            {% endif %}
             <div class="mb-3">
                 <label class="form-label d-flex align-items-center gap-2" for="ai-audit-score">
                     Score
@@ -29,7 +71,7 @@
                 <p class="text-muted small mb-0 mt-1 d-none" id="ai-audit-updated-wrapper">Dernier audit : <span id="ai-audit-updated-at"></span></p>
             </div>
             <div class="mb-3 d-grid">
-                <button type="button" class="btn btn-primary" id="ai-audit-run" {% if audit_url is null %}disabled{% endif %} data-audit-url="{{ audit_url }}">
+                <button type="button" class="btn btn-primary" id="ai-audit-run" {% if audit_url is null %}disabled{% endif %} data-base-audit-url="{{ audit_url }}">
                     Lancer l'audit
                 </button>
             </div>
@@ -45,8 +87,31 @@
         const statusMessage = document.getElementById('ai-audit-status');
         const scoreBar = document.getElementById('ai-audit-score-bar');
         const scoreLabel = document.getElementById('ai-audit-score-label');
-        const viewUrl = "{{ audit_view_url }}";
+        const localeSelect = document.getElementById('ai-audit-locale');
+        const baseViewUrl = "{{ audit_view_url }}";
         const navBadge = document.getElementById('ai-audit-nav-score');
+        const auditTableBody = document.getElementById('ai-audit-table-body');
+        const locales = {{ locales|json_encode|raw }};
+
+        const localeDisplay = typeof Intl !== 'undefined' && typeof Intl.DisplayNames !== 'undefined'
+            ? new Intl.DisplayNames([navigator.language || 'fr'], { type: 'language' })
+            : null;
+
+        const formatLocale = (locale) => {
+            if (!locale) {
+                return '';
+            }
+
+            const normalized = locale.replace('_', '-');
+            if (localeDisplay) {
+                const name = localeDisplay.of(normalized.toLowerCase());
+                if (name) {
+                    return `${name} (${locale})`;
+                }
+            }
+
+            return locale;
+        };
 
         if (!runButton || !retourInput || !scoreBar || !scoreLabel) {
             return;
@@ -101,7 +166,94 @@
             return Math.max(0, Math.min(100, parsed));
         };
 
+        const buildUrl = (baseUrl) => {
+            if (!baseUrl) {
+                return null;
+            }
+
+            const locale = localeSelect ? localeSelect.value : null;
+
+            try {
+                const url = new URL(baseUrl, window.location.origin);
+                if (locale) {
+                    url.searchParams.set('auditLocale', locale);
+                }
+                return url.toString();
+            } catch (e) {
+                return baseUrl;
+            }
+        };
+
+        const buildUrlWithLocale = (baseUrl, locale) => {
+            if (!baseUrl) {
+                return null;
+            }
+
+            try {
+                const url = new URL(baseUrl, window.location.origin);
+                if (locale) {
+                    url.searchParams.set('auditLocale', locale);
+                }
+                return url.toString();
+            } catch (e) {
+                return baseUrl;
+            }
+        };
+
+        const renderAuditTable = (rows) => {
+            if (!auditTableBody) {
+                return;
+            }
+
+            auditTableBody.innerHTML = '';
+
+            if (!rows.length) {
+                auditTableBody.innerHTML = '<tr><td colspan="3" class="text-muted small">Aucun audit enregistré pour le moment.</td></tr>';
+                return;
+            }
+
+            rows.forEach(({ locale, score, updatedAt }) => {
+                const tr = document.createElement('tr');
+
+                const tdLocale = document.createElement('td');
+                tdLocale.classList.add('text-nowrap', 'fw-semibold');
+                tdLocale.textContent = formatLocale(locale);
+
+                const tdScore = document.createElement('td');
+                if (score !== null && score !== undefined) {
+                    const badge = document.createElement('span');
+                    badge.classList.add('badge');
+                    // couleur simple selon score
+                    const red = Math.round(255 - (score * 2.55));
+                    const green = Math.round(score * 2.55);
+                    badge.style.backgroundColor = `rgb(${red}, ${green}, 80)`;
+                    badge.textContent = `${score}/100`;
+                    tdScore.appendChild(badge);
+                } else {
+                    tdScore.classList.add('text-muted');
+                    tdScore.textContent = '-';
+                }
+
+                const tdDate = document.createElement('td');
+                tdDate.classList.add('text-muted');
+                if (updatedAt) {
+                    const date = new Date(updatedAt);
+                    tdDate.textContent = isNaN(date.getTime()) ? '-' : date.toLocaleString();
+                } else {
+                    tdDate.textContent = '-';
+                }
+
+                tr.appendChild(tdLocale);
+                tr.appendChild(tdScore);
+                tr.appendChild(tdDate);
+
+                auditTableBody.appendChild(tr);
+            });
+        };
+
         const bootstrapExisting = async () => {
+            const viewUrl = buildUrl(baseViewUrl);
+
             if (!viewUrl) {
                 return;
             }
@@ -115,6 +267,8 @@
                 const payload = await response.json();
                 if (payload.retour) {
                     retourInput.value = payload.retour;
+                } else {
+                    retourInput.value = '';
                 }
 
                 if (payload.score !== null && payload.score !== undefined) {
@@ -142,10 +296,59 @@
             }
         };
 
+        const fetchAllAudits = async () => {
+            if (!Array.isArray(locales) || !locales.length || !baseViewUrl) {
+                renderAuditTable([]);
+                return;
+            }
+
+            const rows = [];
+
+            for (const locale of locales) {
+                const url = buildUrlWithLocale(baseViewUrl, locale);
+                if (!url) {
+                    continue;
+                }
+
+                try {
+                    const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (!response.ok) {
+                        continue;
+                    }
+
+                    const payload = await response.json();
+                    const text = payload.retour || '';
+                    const scoreFromPayload = payload.score ?? null;
+                    const score = scoreFromPayload !== null && scoreFromPayload !== undefined
+                        ? scoreFromPayload
+                        : extractScore(text);
+
+                    rows.push({
+                        locale,
+                        score: score !== null && score !== undefined ? Math.max(0, Math.min(100, score)) : null,
+                        updatedAt: payload.updatedAt || null,
+                    });
+                } catch (e) {
+                    // ignore per-locale errors
+                }
+            }
+
+            renderAuditTable(rows);
+        };
+
         bootstrapExisting();
+        fetchAllAudits();
+
+        if (localeSelect) {
+            localeSelect.addEventListener('change', () => {
+                bootstrapExisting();
+                fetchAllAudits();
+            });
+        }
 
         runButton.addEventListener('click', async () => {
-            const url = runButton.getAttribute('data-audit-url');
+            const baseAuditUrl = runButton.getAttribute('data-base-audit-url');
+            const url = buildUrl(baseAuditUrl);
 
             if (!url) {
                 setStatus('Aucun produit selectionne pour lancer l audit.', 'text-danger');
@@ -177,6 +380,9 @@
                 } else {
                     setScore(0);
                 }
+
+                // rafraîchir le tableau des audits pour afficher immédiatement le nouveau score
+                await fetchAllAudits();
 
                 setStatus('Audit termine.', 'text-success');
             } catch (error) {

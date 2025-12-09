@@ -34,9 +34,11 @@ final class AiAuditController extends AbstractController
 
     public function getStoredAuditAction(Request $request, int $id): JsonResponse
     {
+        $auditLocale = (string) $request->query->get('auditLocale', $request->getLocale());
+
         $this->logger->info('Fetching stored AI audit', [
             'productId' => $id,
-            'locale' => $request->getLocale(),
+            'auditLocale' => $auditLocale,
         ]);
 
         $product = $this->productRepository->find($id);
@@ -49,7 +51,18 @@ final class AiAuditController extends AbstractController
             return $this->json(['error' => 'Produit introuvable.'], 404);
         }
 
-        $translation = $product->getTranslation($request->getLocale());
+        $hasTranslation = method_exists($product, 'getTranslations') && $product->getTranslations()->containsKey($auditLocale);
+
+        if (!$hasTranslation) {
+            $this->logger->warning('Translation not found for requested audit locale', [
+                'productId' => $id,
+                'auditLocale' => $auditLocale,
+            ]);
+
+            return $this->json(['error' => sprintf('Traduction introuvable pour la locale %s.', $auditLocale)], 404);
+        }
+
+        $translation = $product->getTranslation($auditLocale);
 
         $content = method_exists($translation, 'getAiAuditContent') ? $translation->getAiAuditContent() : null;
         $score = method_exists($translation, 'getAiAuditScore') ? $translation->getAiAuditScore() : null;
@@ -58,10 +71,10 @@ final class AiAuditController extends AbstractController
         if ($content === null && $score === null && $updatedAt === null) {
             $this->logger->debug('No stored audit on translation, checking DB fallback', [
                 'productId' => $product->getId(),
-                'locale' => $translation->getLocale(),
+                'auditLocale' => $auditLocale,
             ]);
 
-            $fallback = $this->fetchAuditFromDb($translation->getLocale(), (int) $product->getId());
+            $fallback = $this->fetchAuditFromDb($auditLocale, (int) $product->getId());
             $content = $fallback['content'];
             $score = $fallback['score'];
             $updatedAt = $fallback['updated_at'];
@@ -76,9 +89,11 @@ final class AiAuditController extends AbstractController
 
     public function aiAuditAction(Request $request, int $id): JsonResponse
     {
+        $auditLocale = (string) $request->query->get('auditLocale', $request->getLocale());
+
         $this->logger->info('AI audit requested', [
             'productId' => $id,
-            'locale' => $request->getLocale(),
+            'auditLocale' => $auditLocale,
         ]);
 
         $product = $this->productRepository->find($id);
@@ -97,8 +112,18 @@ final class AiAuditController extends AbstractController
             return $this->json(['error' => 'OPENAI_API_KEY manquant.'], 500);
         }
 
-        $locale = $request->getLocale();
-        $translation = $product->getTranslation($locale);
+        $hasTranslation = method_exists($product, 'getTranslations') && $product->getTranslations()->containsKey($auditLocale);
+
+        if (!$hasTranslation) {
+            $this->logger->warning('Translation not found for requested audit locale', [
+                'productId' => $id,
+                'auditLocale' => $auditLocale,
+            ]);
+
+            return $this->json(['error' => sprintf('Traduction introuvable pour la locale %s.', $auditLocale)], 404);
+        }
+
+        $translation = $product->getTranslation($auditLocale);
 
         $name = (string) $translation->getName();
         $description = (string) $translation->getDescription();
@@ -152,7 +177,7 @@ final class AiAuditController extends AbstractController
 
         $this->logger->info('Starting AI audit call to OpenAI', [
             'productId' => $id,
-            'locale' => $locale,
+            'auditLocale' => $auditLocale,
             'model' => self::MODEL,
             'systemPromptLength' => strlen($systemPrompt),
             'userPromptLength' => strlen($userPrompt),
