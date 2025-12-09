@@ -9,6 +9,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptRenderer;
 use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptVariables;
 use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditSettingsProvider;
+use Psr\Log\LoggerInterface;
 use Sylius\Component\Product\Repository\ProductRepositoryInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -27,14 +28,24 @@ final class AiAuditController extends AbstractController
         private readonly AiAuditSettingsProvider $settingsProvider,
         private readonly AiAuditPromptRenderer $promptRenderer,
         private readonly AiAuditPromptVariables $promptVariables,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
     public function getStoredAuditAction(Request $request, int $id): JsonResponse
     {
+        $this->logger->info('Fetching stored AI audit', [
+            'productId' => $id,
+            'locale' => $request->getLocale(),
+        ]);
+
         $product = $this->productRepository->find($id);
 
         if ($product === null) {
+            $this->logger->warning('Product not found when fetching stored audit', [
+                'productId' => $id,
+            ]);
+
             return $this->json(['error' => 'Produit introuvable.'], 404);
         }
 
@@ -45,6 +56,11 @@ final class AiAuditController extends AbstractController
         $updatedAt = method_exists($translation, 'getAiAuditUpdatedAt') ? $translation->getAiAuditUpdatedAt() : null;
 
         if ($content === null && $score === null && $updatedAt === null) {
+            $this->logger->debug('No stored audit on translation, checking DB fallback', [
+                'productId' => $product->getId(),
+                'locale' => $translation->getLocale(),
+            ]);
+
             $fallback = $this->fetchAuditFromDb($translation->getLocale(), (int) $product->getId());
             $content = $fallback['content'];
             $score = $fallback['score'];
@@ -60,15 +76,24 @@ final class AiAuditController extends AbstractController
 
     public function aiAuditAction(Request $request, int $id): JsonResponse
     {
+        $this->logger->info('AI audit requested', [
+            'productId' => $id,
+            'locale' => $request->getLocale(),
+        ]);
+
         $product = $this->productRepository->find($id);
 
         if ($product === null) {
+            $this->logger->warning('Product not found for AI audit', ['productId' => $id]);
             return $this->json(['error' => 'Produit introuvable.'], 404);
         }
 
         $apiKey = $_ENV['OPENAI_API_KEY'] ?? $_SERVER['OPENAI_API_KEY'] ?? null;
 
         if ($apiKey === null || $apiKey === '') {
+            $this->logger->error('OPENAI_API_KEY missing when triggering AI audit', [
+                'productId' => $id,
+            ]);
             return $this->json(['error' => 'OPENAI_API_KEY manquant.'], 500);
         }
 
@@ -125,6 +150,14 @@ final class AiAuditController extends AbstractController
         $systemPrompt = $this->promptRenderer->render($systemPromptTemplate, $context);
         $userPrompt = $this->promptRenderer->render($userPromptTemplate, $context);
 
+        $this->logger->info('Starting AI audit call to OpenAI', [
+            'productId' => $id,
+            'locale' => $locale,
+            'model' => self::MODEL,
+            'systemPromptLength' => strlen($systemPrompt),
+            'userPromptLength' => strlen($userPrompt),
+        ]);
+
         try {
             $response = $this->httpClient->request('POST', 'https://api.openai.com/v1/responses', [
                 'headers' => [
@@ -145,7 +178,16 @@ final class AiAuditController extends AbstractController
 
             $statusCode = $response->getStatusCode();
 
+            $this->logger->info('OpenAI response received', [
+                'statusCode' => $statusCode,
+                'productId' => $id,
+            ]);
+
             if ($statusCode < 200 || $statusCode >= 300) {
+                $this->logger->error('OpenAI API returned non-success status', [
+                    'statusCode' => $statusCode,
+                    'productId' => $id,
+                ]);
                 return $this->json(['error' => 'Erreur API OpenAI (' . $statusCode . ').'], 502);
             }
 
@@ -154,6 +196,10 @@ final class AiAuditController extends AbstractController
             $outputText = $data['output_text'] ?? null;
 
             if (is_string($outputText) && trim($outputText) !== '') {
+                $this->logger->debug('OpenAI returned output_text', [
+                    'productId' => $id,
+                    'textLength' => strlen($outputText),
+                ]);
                 return $this->persistAndRespond($translation, $outputText);
             }
 
@@ -168,21 +214,39 @@ final class AiAuditController extends AbstractController
                         $text = trim(implode("\n", $textParts));
 
                         if ($text !== '') {
+                            $this->logger->debug('OpenAI returned text chunks', [
+                                'productId' => $id,
+                                'textLength' => strlen($text),
+                            ]);
                             return $this->persistAndRespond($translation, $text);
                         }
                     }
                 }
             }
 
-            return $this->json(['error' => 'Réponse OpenAI invalide ou vide.'], 502);
+            $this->logger->error('OpenAI response had no usable text', [
+                'productId' => $id,
+            ]);
+
+            return $this->json(['error' => 'Reponse OpenAI invalide ou vide.'], 502);
         } catch (TransportExceptionInterface $exception) {
-            return $this->json(['error' => 'Erreur réseau: ' . $exception->getMessage()], 502);
+            $this->logger->error('Network error while calling OpenAI', [
+                'productId' => $id,
+                'message' => $exception->getMessage(),
+            ]);
+            return $this->json(['error' => 'Erreur reseau: ' . $exception->getMessage()], 502);
         }
     }
 
     private function persistAndRespond(object $translation, string $text): JsonResponse
     {
         $score = $this->extractScore($text);
+        $this->logger->info('Persisting AI audit result', [
+            'productId' => $translation->getTranslatable()?->getId(),
+            'locale' => $translation->getLocale(),
+            'score' => $score,
+            'textLength' => strlen($text),
+        ]);
 
         if (method_exists($translation, 'setAiAuditContent')) {
             $translation->setAiAuditContent($text);
@@ -203,6 +267,10 @@ final class AiAuditController extends AbstractController
         ) {
             $this->entityManager->flush();
         } else {
+            $this->logger->warning('Translation setters missing, using fallback persistence', [
+                'productId' => $translation->getTranslatable()?->getId(),
+                'locale' => $translation->getLocale(),
+            ]);
             $this->persistAuditFallback(
                 $translation->getLocale(),
                 (int) $translation->getTranslatable()?->getId(),
@@ -220,20 +288,30 @@ final class AiAuditController extends AbstractController
     private function extractScore(string $text): ?int
     {
         if ($text === '') {
+            $this->logger->debug('Empty text received for score extraction');
             return null;
         }
 
         if (preg_match('/Score:\s*(\d{1,3})/i', $text, $matches) !== 1) {
+            $this->logger->debug('No score found in audit text');
             return null;
         }
 
         $score = (int) $matches[1];
+        $this->logger->debug('Score extracted from audit text', ['score' => $score]);
 
         return max(0, min(100, $score));
     }
 
     private function persistAuditFallback(string $locale, int $productId, string $content, ?int $score): void
     {
+        $this->logger->info('Persisting audit via DB fallback', [
+            'productId' => $productId,
+            'locale' => $locale,
+            'score' => $score,
+            'contentLength' => strlen($content),
+        ]);
+
         /** @var Connection $connection */
         $connection = $this->entityManager->getConnection();
         $connection->executeStatement(
@@ -254,6 +332,11 @@ final class AiAuditController extends AbstractController
 
     private function fetchAuditFromDb(string $locale, int $productId): array
     {
+        $this->logger->debug('Fetching audit from DB fallback', [
+            'productId' => $productId,
+            'locale' => $locale,
+        ]);
+
         /** @var Connection $connection */
         $connection = $this->entityManager->getConnection();
         $row = $connection->fetchAssociative(
@@ -272,3 +355,4 @@ final class AiAuditController extends AbstractController
         ];
     }
 }
+
