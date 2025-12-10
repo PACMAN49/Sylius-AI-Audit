@@ -162,6 +162,20 @@ final class AiAuditController extends AbstractController
 
         $context = $this->promptVariables->buildContext($product, $translation);
         $context['productData'] = $productData;
+        $attributeContext = array_filter(
+            $context,
+            static fn (string $key): bool => str_starts_with($key, 'attribute_'),
+            ARRAY_FILTER_USE_KEY,
+        );
+        $this->logger->debug('[AiAudit] Attribute variables prepared for prompt', [
+            'productId' => $id,
+            'locale' => $auditLocale,
+            'attribute_count' => count($attributeContext),
+            'attributes_preview' => array_map(
+                static fn (string $value): string => mb_substr($value, 0, 80),
+                $attributeContext,
+            ),
+        ]);
 
         $userPromptTemplate = $settings->getUserPrompt() ?: implode("\n", [
             'Voici les contenus de la fiche produit à auditer :',
@@ -180,7 +194,10 @@ final class AiAuditController extends AbstractController
             'auditLocale' => $auditLocale,
             'model' => self::MODEL,
             'systemPromptLength' => strlen($systemPrompt),
+            'systemPromptVariables' => $this->promptRenderer->extractVariables($systemPromptTemplate),
             'userPromptLength' => strlen($userPrompt),
+            'userPromptVariables' => $this->promptRenderer->extractVariables($userPromptTemplate),
+
         ]);
 
         try {

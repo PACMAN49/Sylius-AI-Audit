@@ -6,7 +6,8 @@ namespace PlanetRide\SyliusAiAuditPlugin\Settings;
 
 final class AiAuditPromptRenderer
 {
-    private const TOKEN_PATTERN = '/{{\s*([a-zA-Z0-9_]+)\s*}}/';
+    // Support letters, numbers, underscores and dashes inside placeholders
+    private const TOKEN_PATTERN = '/{{\s*([a-zA-Z0-9_-]+)\s*}}/';
 
     /**
      * @param string $template Prompt with placeholders {{variable}}

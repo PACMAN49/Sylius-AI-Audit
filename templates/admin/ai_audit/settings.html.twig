@@ -16,10 +16,14 @@
                             </div>
                             <div class="card-body">
                                 {% if allowedVariables is defined %}
-                                    <p class="text-muted">
+                                    <p class="text-muted mb-1">
                                         Variables disponibles :
-                                        <code>{{ allowedVariables|join('</code>, <code>')|raw }}</code>
+                                        {% for variable in allowedVariables %}
+                                            {% set isUsed = usedVariables is defined and variable in usedVariables %}
+                                            <code class="{{ isUsed ? 'text-success' : '' }}">{{ variable }}</code>{% if not loop.last %}, {% endif %}
+                                        {% endfor %}
                                     </p>
+                                    <p class="text-muted small">En vert : variables présentes dans le prompt utilisateur.</p>
                                 {% endif %}
                                 {% for label, messages in app.flashes %}
                                     {% for message in messages %}

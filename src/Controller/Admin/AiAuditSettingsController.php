@@ -60,8 +60,16 @@ final class AiAuditSettingsController extends AbstractController
             $invalidUser = $this->promptValidator->validate($data['userPrompt'] ?? '');
 
             if (!empty($invalidSystem) || !empty($invalidUser)) {
+                if (!empty($invalidSystem) && $form->has('systemPrompt')) {
+                    $form->get('systemPrompt')->addError(new FormError('Variables inconnues : ' . implode(', ', $invalidSystem)));
+                }
+
+                if (!empty($invalidUser) && $form->has('userPrompt')) {
+                    $form->get('userPrompt')->addError(new FormError('Variables inconnues : ' . implode(', ', $invalidUser)));
+                }
+
                 $invalid = array_unique(array_merge($invalidSystem, $invalidUser));
-                $form->addError(new FormError('Variables inconnues : ' . implode(', ', $invalid)));
+                $this->addFlash('error', 'Erreur : Variables inconnues détectées : ' . implode(', ', $invalid));
             } else {
                 $this->settingsProvider->update(
                     $data['systemPrompt'] ?? null,
@@ -74,10 +82,13 @@ final class AiAuditSettingsController extends AbstractController
             }
         }
 
+        $usedVariables = $this->promptValidator->extract((string) $form->get('userPrompt')->getData());
+
         return $this->render('@SyliusAiAuditPlugin/admin/ai_audit/settings.html.twig', [
             'form' => $form->createView(),
             'updatedAt' => $settings->getUpdatedAt(),
             'allowedVariables' => $this->promptVariables->getAllowedVariables(),
+            'usedVariables' => $usedVariables,
         ]);
     }
 }
