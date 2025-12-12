@@ -19,7 +19,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class AiAuditController extends AbstractController
 {
-    private const MODEL = 'gpt-4.1-mini';
+    private const MODEL = 'gpt-5-mini';
 
     public function __construct(
         private readonly ProductRepositoryInterface $productRepository,
@@ -188,6 +188,26 @@ final class AiAuditController extends AbstractController
 
         $systemPrompt = $this->promptRenderer->render($systemPromptTemplate, $context);
         $userPrompt = $this->promptRenderer->render($userPromptTemplate, $context);
+        $inputPayload = [
+            [
+                'role' => 'system',
+                'content' => [
+                    [
+                        'type' => 'input_text',
+                        'text' => $systemPrompt,
+                    ],
+                ],
+            ],
+            [
+                'role' => 'user',
+                'content' => [
+                    [
+                        'type' => 'input_text',
+                        'text' => $userPrompt,
+                    ],
+                ],
+            ],
+        ];
 
         $this->logger->info('Starting AI audit call to OpenAI', [
             'productId' => $id,
@@ -208,13 +228,8 @@ final class AiAuditController extends AbstractController
                 ],
                 'json' => [
                     'model' => self::MODEL,
-                    'input' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userPrompt],
-                    ],
-                    'temperature' => 0.2,
+                    'input' => $inputPayload,
                     'max_output_tokens' => 5000,
-                    'text' => ['verbosity' => 'medium'],
                 ],
             ]);
 
@@ -226,9 +241,11 @@ final class AiAuditController extends AbstractController
             ]);
 
             if ($statusCode < 200 || $statusCode >= 300) {
+                $responseBody = $response->getContent(false);
                 $this->logger->error('OpenAI API returned non-success status', [
                     'statusCode' => $statusCode,
                     'productId' => $id,
+                    'responseBody' => mb_substr($responseBody, 0, 800),
                 ]);
                 return $this->json(['error' => 'Erreur API OpenAI (' . $statusCode . ').'], 502);
             }
@@ -397,4 +414,3 @@ final class AiAuditController extends AbstractController
         ];
     }
 }
-
