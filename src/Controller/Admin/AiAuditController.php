@@ -198,6 +198,8 @@ final class AiAuditController extends AbstractController
 
         try {
             $response = $this->httpClient->request('POST', 'https://api.openai.com/v1/responses', [
+                'timeout' => 180,       // attendre plus longtemps pour une réponse
+                'max_duration' => 200,    // pas de limite de durée totale
                 'headers' => [
                     'Authorization' => 'Bearer ' . $apiKey,
                     'Content-Type' => 'application/json',
