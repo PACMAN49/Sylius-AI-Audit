@@ -23,6 +23,51 @@
             </h2>
         </div>
         <div class="card-body">
+            <style>
+                #ai-audit-loader {
+                    border-radius: 12px;
+                    padding: 10px 12px;
+                    margin-bottom: 10px;
+                    background: linear-gradient(120deg, #f5f8ff, #eef9f6);
+                    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+                }
+
+                #ai-audit-loader .ai-audit-loader-icon {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    font-size: 22px;
+                    background: radial-gradient(circle at 30% 30%, #ffd07f, #ffb347 60%, #f9844a 100%);
+                    color: #1b2a4a;
+                    box-shadow: 0 0 0 4px #fff, 0 10px 25px rgba(0, 0, 0, 0.12);
+                    animation: aiAuditSpin 1.4s linear infinite, aiAuditBounce 0.9s ease-in-out infinite alternate;
+                }
+
+                #ai-audit-loader .ai-audit-loader-text {
+                    line-height: 1.2;
+                }
+
+                @keyframes aiAuditSpin {
+                    from {
+                        transform: rotate(0deg);
+                    }
+                    to {
+                        transform: rotate(360deg);
+                    }
+                }
+
+                @keyframes aiAuditBounce {
+                    from {
+                        transform: translateY(-3px);
+                    }
+                    to {
+                        transform: translateY(3px);
+                    }
+                }
+            </style>
             <div class="mb-3">
                 <label class="form-label d-flex align-items-center gap-2 mb-2">
                     Scores déjà audités
@@ -75,6 +120,15 @@
                     Lancer l'audit
                 </button>
             </div>
+            <div id="ai-audit-loader" class="d-none" aria-live="polite">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="ai-audit-loader-icon" aria-hidden="true">🤖</div>
+                    <div class="ai-audit-loader-text">
+                        <div class="fw-semibold text-primary">ChatGPT réfléchit...</div>
+                        <div class="text-muted small">Le petit robot danse pendant l'analyse.</div>
+                    </div>
+                </div>
+            </div>
             <p class="text-muted small mt-2 mb-0" id="ai-audit-status"></p>
         </div>
     </div>
@@ -92,6 +146,7 @@
         const navBadge = document.getElementById('ai-audit-nav-score');
         const auditTableBody = document.getElementById('ai-audit-table-body');
         const locales = {{ locales|json_encode|raw }};
+        const loader = document.getElementById('ai-audit-loader');
 
         const localeDisplay = typeof Intl !== 'undefined' && typeof Intl.DisplayNames !== 'undefined'
             ? new Intl.DisplayNames([navigator.language || 'fr'], { type: 'language' })
@@ -357,6 +412,9 @@
 
             setStatus('Audit en cours...');
             runButton.setAttribute('disabled', 'disabled');
+            if (loader) {
+                loader.classList.remove('d-none');
+            }
 
             try {
                 const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -389,6 +447,9 @@
                 setStatus(error.message || 'Impossible de lancer l audit.', 'text-danger');
             } finally {
                 runButton.removeAttribute('disabled');
+                if (loader) {
+                    loader.classList.add('d-none');
+                }
             }
         });
     })();

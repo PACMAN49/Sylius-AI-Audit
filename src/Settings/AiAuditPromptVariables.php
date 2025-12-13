@@ -53,7 +53,7 @@ final class AiAuditPromptVariables
     }
 
     /** @return array<string,string> */
-    public function buildContext(ProductInterface $product, ProductTranslationInterface $translation): array
+    public function buildContext(ProductInterface $product, ProductTranslationInterface $translation, string $locale): array
     {
         $shortDescription = method_exists($translation, 'getShortDescription') ? (string) $translation->getShortDescription() : '';
 
@@ -69,7 +69,7 @@ final class AiAuditPromptVariables
         ];
 
         if (method_exists($product, 'getAttributes')) {
-            foreach ($product->getAttributes() as $attributeValue) {
+            foreach ($product->getAttributesByLocale($locale,$locale) as $attributeValue) {
                 if (!method_exists($attributeValue, 'getAttribute')) {
                     $this->logger->warning('[AiAudit] Attribute value missing getAttribute() method', [
                         'class' => is_object($attributeValue) ? $attributeValue::class : gettype($attributeValue),
@@ -135,18 +135,44 @@ final class AiAuditPromptVariables
 
     private function stringifyAttributeValue(mixed $value): string
     {
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format('Y-m-d');
+        if ($value instanceof \Traversable) {
+            $value = iterator_to_array($value);
         }
 
         if (is_array($value)) {
-            return implode(', ', array_map('strval', $value));
+            $parts = [];
+
+            array_walk_recursive($value, function ($item) use (&$parts): void {
+                $stringValue = $this->stringifyLeafValue($item);
+                if ($stringValue !== '') {
+                    $parts[] = $stringValue;
+                }
+            });
+
+            return implode(PHP_EOL, $parts);
+        }
+
+        return $this->stringifyLeafValue($value);
+    }
+
+    private function stringifyLeafValue(mixed $value): string
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
         }
 
         if (is_bool($value)) {
             return $value ? 'true' : 'false';
         }
 
-        return (string) $value;
+        if ($value instanceof \Stringable) {
+            return (string) $value;
+        }
+
+        if (is_scalar($value) || $value === null) {
+            return (string) $value;
+        }
+
+        return '';
     }
 }

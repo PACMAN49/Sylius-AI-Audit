@@ -134,33 +134,9 @@ final class AiAuditController extends AbstractController
         $settings = $this->settingsProvider->getSettings();
         $systemPromptTemplate = $settings->getSystemPrompt() ?? '';
 
-        $productData = implode("\n", [
-            'Titre (Name) :',
-            $name,
-            '',
-            'Description :',
-            $description,
-            '',
-            'Résumé court :',
-            $shortDescription,
-            '',
-            'Highlights :',
-            '(non fournis ici)',
-            '',
-            'Meta description :',
-            $metaDescription,
-            '',
-            'Meta keywords :',
-            $metaKeywords,
-            '',
-            'Jour par jour :',
-            '(non fourni ici)',
-            '',
-            'Inclusions / Non-inclusions / Infos importantes :',
-            '(non fourni ici)',
-        ]);
+        $productData = $settings->getUserPrompt();
 
-        $context = $this->promptVariables->buildContext($product, $translation);
+        $context = $this->promptVariables->buildContext($product, $translation,$auditLocale);
         $context['productData'] = $productData;
         $attributeContext = array_filter(
             $context,
