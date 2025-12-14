@@ -12,11 +12,23 @@ Voici les contenus de la fiche produit à auditer :
 [Highlights]
 {{attribute_thumb_detail}}
 
+[Meta title]
+{{ metadataTitle }}
+
 [Meta description]
-{{ metaDescription }}
+{{ metaDescription }} 
+
+[Meta description enforced]
+{{ metadataDescription }} 
 
 [Meta keywords]
 {{ metaKeywords }}
+
+[Brand]
+{{ brand }}
+
+[Sku]
+{{ sku }}
 
 [Jour par jour]
 {{ attribute_day1 }}

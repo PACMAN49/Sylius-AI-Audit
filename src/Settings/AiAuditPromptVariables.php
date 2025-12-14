@@ -46,6 +46,15 @@ final class AiAuditPromptVariables
             'shortDescription',
             'metaDescription',
             'metaKeywords',
+            'metadataTitle',
+            'metadataDescription',
+            'brand',
+            'sku',
+            'gtin8',
+            'gtin13',
+            'gtin14',
+            'mpn',
+            'isbn',
             'productId',
             'code',
             'productData',
@@ -57,19 +66,30 @@ final class AiAuditPromptVariables
     {
         $shortDescription = method_exists($translation, 'getShortDescription') ? (string) $translation->getShortDescription() : '';
 
+        $this->assignSeoLocales($product, $locale);
+
         $context = [
             'name' => (string) $translation->getName(),
             'description' => (string) $translation->getDescription(),
             'shortDescription' => $shortDescription,
             'metaDescription' => (string) $translation->getMetaDescription(),
             'metaKeywords' => (string) $translation->getMetaKeywords(),
+            'metadataTitle' => method_exists($product, 'getMetadataTitle') ? (string) ($product->getMetadataTitle() ?? '') : '',
+            'metadataDescription' => method_exists($product, 'getMetadataDescription') ? (string) ($product->getMetadataDescription() ?? '') : '',
+            'brand' => method_exists($product, 'getSEOBrand') ? (string) ($product->getSEOBrand() ?? '') : '',
+            'sku' => $this->resolveSku($product),
+            'gtin8' => method_exists($product, 'getSEOGtin8') ? (string) ($product->getSEOGtin8() ?? '') : '',
+            'gtin13' => method_exists($product, 'getSEOGtin13') ? (string) ($product->getSEOGtin13() ?? '') : '',
+            'gtin14' => method_exists($product, 'getSEOGtin14') ? (string) ($product->getSEOGtin14() ?? '') : '',
+            'mpn' => method_exists($product, 'getSEOMpn') ? (string) ($product->getSEOMpn() ?? '') : '',
+            'isbn' => method_exists($product, 'getSEOIsbn') ? (string) ($product->getSEOIsbn() ?? '') : '',
             'productId' => (string) $product->getId(),
             'code' => method_exists($product, 'getCode') ? (string) $product->getCode() : '',
             'productData' => '',
         ];
 
         if (method_exists($product, 'getAttributes')) {
-            foreach ($product->getAttributesByLocale($locale,$locale) as $attributeValue) {
+            foreach ($product->getAttributesByLocale($locale, $locale) as $attributeValue) {
                 if (!method_exists($attributeValue, 'getAttribute')) {
                     $this->logger->warning('[AiAudit] Attribute value missing getAttribute() method', [
                         'class' => is_object($attributeValue) ? $attributeValue::class : gettype($attributeValue),
@@ -174,5 +194,39 @@ final class AiAuditPromptVariables
         }
 
         return '';
+    }
+
+    private function assignSeoLocales(ProductInterface $product, string $locale): void
+    {
+        if (method_exists($product, 'setReferenceableLocale')) {
+            $product->setReferenceableLocale($locale);
+        }
+        if (method_exists($product, 'setReferenceableFallbackLocale')) {
+            $product->setReferenceableFallbackLocale($locale);
+        }
+
+        if (!method_exists($product, 'getReferenceableContent')) {
+            return;
+        }
+
+        $seoContent = $product->getReferenceableContent();
+        if (method_exists($seoContent, 'setCurrentLocale')) {
+            $seoContent->setCurrentLocale($locale);
+        }
+        if (method_exists($seoContent, 'setFallbackLocale')) {
+            $seoContent->setFallbackLocale($locale);
+        }
+    }
+
+    private function resolveSku(ProductInterface $product): string
+    {
+        if (method_exists($product, 'getSEOSku')) {
+            $seoSku = (string) ($product->getSEOSku() ?? '');
+            if ($seoSku !== '') {
+                return $seoSku;
+            }
+        }
+
+        return method_exists($product, 'getCode') ? (string) $product->getCode() : '';
     }
 }
