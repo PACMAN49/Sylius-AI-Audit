@@ -9,8 +9,8 @@ use PlanetRide\SyliusAiAuditPlugin\Entity\AiAuditSettings;
 
 final class AiAuditSettingsProvider
 {
-    private const DEFAULT_SYSTEM_PROMPT = 'Tu es chargé d’auditer une fiche produit Planet Ride. Produis un score et une liste d’actions.';
-    private const DEFAULT_USER_PROMPT = 'Voici les contenus à auditer. Retourne le score et la liste des problèmes.';
+    private const DEFAULT_SYSTEM_PROMPT = "Tu es charge d'auditer une fiche produit Planet Ride. Produis un score et une liste d'actions.";
+    private const DEFAULT_USER_PROMPT = 'Voici les contenus a auditer. Retourne le score et la liste des problemes.';
 
     public function __construct(private readonly EntityManagerInterface $entityManager)
     {
@@ -46,3 +46,5 @@ final class AiAuditSettingsProvider
         return $settings;
     }
 }
+
+

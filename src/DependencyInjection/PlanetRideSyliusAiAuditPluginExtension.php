@@ -30,7 +30,7 @@ final class PlanetRideSyliusAiAuditPluginExtension extends AbstractResourceExten
 
     protected function getMigrationsNamespace(): string
     {
-        return 'PlanetRideSyliusAiAuditPlugin';
+        return 'PlanetRideSyliusAiAuditPlugin\\Migrations';
     }
 
     protected function getMigrationsDirectory(): string

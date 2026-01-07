@@ -34,16 +34,16 @@ final class AiAuditSettingsController extends AbstractController
             'userPrompt' => $settings->getUserPrompt(),
         ])
             ->add('systemPrompt', TextareaType::class, [
-                'label' => 'Prompt système',
+                'label' => 'Prompt systeme',
                 'required' => false,
                 'attr' => ['rows' => 6],
-                'help' => 'Contexte et consignes fixes envoyés à l’IA.',
+                'help' => "Contexte et consignes fixes envoyes a l'IA.",
             ])
             ->add('userPrompt', TextareaType::class, [
                 'label' => 'Prompt utilisateur',
                 'required' => false,
                 'attr' => ['rows' => 8],
-                'help' => 'Modèle de message utilisateur (le contenu produit sera injecté).',
+                'help' => 'Modele de message utilisateur (le contenu produit sera injecte).',
             ])
             ->add('save', SubmitType::class, [
                 'label' => 'Enregistrer',
@@ -69,14 +69,14 @@ final class AiAuditSettingsController extends AbstractController
                 }
 
                 $invalid = array_unique(array_merge($invalidSystem, $invalidUser));
-                $this->addFlash('error', 'Erreur : Variables inconnues détectées : ' . implode(', ', $invalid));
+                $this->addFlash('error', 'Erreur : Variables inconnues detectees : ' . implode(', ', $invalid));
             } else {
                 $this->settingsProvider->update(
                     $data['systemPrompt'] ?? null,
                     $data['userPrompt'] ?? null,
                 );
 
-                $this->addFlash('success', 'Prompts Ai Audit mis à jour.');
+                $this->addFlash('success', 'Prompts Ai Audit mis a jour.');
 
                 return $this->redirectToRoute('planetride_sylius_ai_audit_admin_settings');
             }
@@ -92,3 +92,6 @@ final class AiAuditSettingsController extends AbstractController
         ]);
     }
 }
+
+
+

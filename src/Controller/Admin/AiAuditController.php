@@ -125,24 +125,16 @@ final class AiAuditController extends AbstractController
 
         $translation = $product->getTranslation($auditLocale);
 
-        $name = (string) $translation->getName();
-        $description = (string) $translation->getDescription();
-        $shortDescription = method_exists($translation, 'getShortDescription') ? (string) $translation->getShortDescription() : '';
-        $metaDescription = (string) $translation->getMetaDescription();
-        $metaKeywords = (string) $translation->getMetaKeywords();
-
         $settings = $this->settingsProvider->getSettings();
         $systemPromptTemplate = $settings->getSystemPrompt() ?? '';
 
-        $productData = $settings->getUserPrompt();
-
-        $context = $this->promptVariables->buildContext($product, $translation,$auditLocale);
-        $context['productData'] = $productData;
+        $context = $this->promptVariables->buildContext($product, $translation, $auditLocale);
         $attributeContext = array_filter(
             $context,
             static fn (string $key): bool => str_starts_with($key, 'attribute_'),
             ARRAY_FILTER_USE_KEY,
         );
+        $context['productData'] = $this->buildProductData($context, $attributeContext);
         $this->logger->debug('[AiAudit] Attribute variables prepared for prompt', [
             'productId' => $id,
             'locale' => $auditLocale,
@@ -154,12 +146,12 @@ final class AiAuditController extends AbstractController
         ]);
 
         $userPromptTemplate = $settings->getUserPrompt() ?: implode("\n", [
-            'Voici les contenus de la fiche produit à auditer :',
+            'Voici les contenus de la fiche produit a auditer :',
             '',
-            $productData,
+            '{{productData}}',
             '',
-            'Calcule la note sur 100 selon les critères décrits dans le message système,',
-            'puis liste tous les problèmes concrets à corriger (même mineurs) dans le bloc "Audit:".',
+            'Calcule la note sur 100 selon les criteres decrits dans le message systeme,',
+            'puis liste tous les problemes concrets a corriger (meme mineurs) dans le bloc Audit:.',
         ]);
 
         $systemPrompt = $this->promptRenderer->render($systemPromptTemplate, $context);
@@ -198,8 +190,8 @@ final class AiAuditController extends AbstractController
 
         try {
             $response = $this->httpClient->request('POST', 'https://api.openai.com/v1/responses', [
-                'timeout' => 180,       // attendre plus longtemps pour une réponse
-                'max_duration' => 200,    // pas de limite de durée totale
+                'timeout' => 180,       // attendre plus longtemps pour une reponse
+                'max_duration' => 200,    // pas de limite de duree totale
                 'headers' => [
                     'Authorization' => 'Bearer ' . $apiKey,
                     'Content-Type' => 'application/json',
@@ -273,6 +265,49 @@ final class AiAuditController extends AbstractController
             ]);
             return $this->json(['error' => 'Erreur reseau: ' . $exception->getMessage()], 502);
         }
+    }
+
+    /**
+     * @param array<string, string> $context
+     * @param array<string, string> $attributeContext
+     */
+    private function buildProductData(array $context, array $attributeContext): string
+    {
+        $lines = [];
+
+        $append = static function (string $label, ?string $value) use (&$lines): void {
+            $value = trim((string) $value);
+            if ($value !== '') {
+                $lines[] = $label . ': ' . $value;
+            }
+        };
+
+        $append('Nom', $context['name'] ?? '');
+        $append('Description', $context['description'] ?? '');
+        $append('Description courte', $context['shortDescription'] ?? '');
+        $append('Meta description', $context['metaDescription'] ?? '');
+        $append('Meta mots-cles', $context['metaKeywords'] ?? '');
+        $append('Meta title', $context['metadataTitle'] ?? '');
+        $append('Meta description (SEO)', $context['metadataDescription'] ?? '');
+        $append('Marque', $context['brand'] ?? '');
+        $append('SKU', $context['sku'] ?? '');
+        $append('GTIN-8', $context['gtin8'] ?? '');
+        $append('GTIN-13', $context['gtin13'] ?? '');
+        $append('GTIN-14', $context['gtin14'] ?? '');
+        $append('MPN', $context['mpn'] ?? '');
+        $append('ISBN', $context['isbn'] ?? '');
+        $append('Produit ID', $context['productId'] ?? '');
+        $append('Code', $context['code'] ?? '');
+
+        foreach ($attributeContext as $key => $value) {
+            $code = substr($key, strlen('attribute_'));
+            if ($code === '') {
+                continue;
+            }
+            $append('Attribut ' . $code, $value);
+        }
+
+        return implode("\n", $lines);
     }
 
     private function persistAndRespond(object $translation, string $text): JsonResponse
@@ -392,3 +427,4 @@ final class AiAuditController extends AbstractController
         ];
     }
 }
+
