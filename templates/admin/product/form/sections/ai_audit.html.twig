@@ -147,6 +147,7 @@
         const auditTableBody = document.getElementById('ai-audit-table-body');
         const locales = {{ locales|json_encode|raw }};
         const loader = document.getElementById('ai-audit-loader');
+        const auditRowsByLocale = new Map();
 
         const localeDisplay = typeof Intl !== 'undefined' && typeof Intl.DisplayNames !== 'undefined'
             ? new Intl.DisplayNames([navigator.language || 'fr'], { type: 'language' })
@@ -357,7 +358,7 @@
                 return;
             }
 
-            const rows = [];
+            auditRowsByLocale.clear();
 
             for (const locale of locales) {
                 const url = buildUrlWithLocale(baseViewUrl, locale);
@@ -378,7 +379,7 @@
                         ? scoreFromPayload
                         : extractScore(text);
 
-                    rows.push({
+                    auditRowsByLocale.set(locale, {
                         locale,
                         score: score !== null && score !== undefined ? Math.max(0, Math.min(100, score)) : null,
                         updatedAt: payload.updatedAt || null,
@@ -388,7 +389,10 @@
                 }
             }
 
-            renderAuditTable(rows);
+            const orderedRows = locales
+                .map((item) => auditRowsByLocale.get(item))
+                .filter((row) => Boolean(row));
+            renderAuditTable(orderedRows);
         };
 
         bootstrapExisting();
@@ -397,7 +401,6 @@
         if (localeSelect) {
             localeSelect.addEventListener('change', () => {
                 bootstrapExisting();
-                fetchAllAudits();
             });
         }
 
@@ -440,7 +443,19 @@
                 }
 
                 // rafraîchir le tableau des audits pour afficher immédiatement le nouveau score
-                await fetchAllAudits();
+                if (localeSelect) {
+                    const locale = localeSelect.value;
+                    const safeScore = payload.score ?? score;
+                    auditRowsByLocale.set(locale, {
+                        locale,
+                        score: safeScore !== null && safeScore !== undefined ? Math.max(0, Math.min(100, safeScore)) : null,
+                        updatedAt: new Date().toISOString(),
+                    });
+                    const orderedRows = locales
+                        .map((item) => auditRowsByLocale.get(item))
+                        .filter((row) => Boolean(row));
+                    renderAuditTable(orderedRows);
+                }
 
                 setStatus('Audit termine.', 'text-success');
             } catch (error) {
