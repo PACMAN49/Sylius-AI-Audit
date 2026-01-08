@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PlanetRide\SyliusAiAuditPlugin\Controller\Admin;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\ConnectionLost;
 use Doctrine\ORM\EntityManagerInterface;
 use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptRenderer;
 use PlanetRide\SyliusAiAuditPlugin\Settings\AiAuditPromptVariables;
@@ -156,6 +157,7 @@ final class AiAuditController extends AbstractController
 
         $systemPrompt = $this->promptRenderer->render($systemPromptTemplate, $context);
         $userPrompt = $this->promptRenderer->render($userPromptTemplate, $context);
+        $userPrompt .= "\n\n" . $this->getInlineFieldInstruction();
         $inputPayload = [
             [
                 'role' => 'system',
@@ -310,6 +312,18 @@ final class AiAuditController extends AbstractController
         return implode("\n", $lines);
     }
 
+    private function getInlineFieldInstruction(): string
+    {
+        return implode("\n", [
+            'Add a block at the end so the UI can attach issues to fields.',
+            'Use this exact format:',
+            'AI_AUDIT_FIELDS:',
+            '{"fields":{"name":"","description":"","shortDescription":"","metaDescription":"","metaKeywords":"","metadataTitle":"","metadataDescription":"","brand":"","sku":"","gtin8":"","gtin13":"","gtin14":"","mpn":"","isbn":"","productId":"","code":"","attribute_<code>":""}}',
+            'END_AI_AUDIT_FIELDS',
+            'Leave empty strings when there is nothing to fix for a field.',
+        ]);
+    }
+
     private function persistAndRespond(object $translation, string $text): JsonResponse
     {
         $score = $this->extractScore($text);
@@ -386,20 +400,31 @@ final class AiAuditController extends AbstractController
 
         /** @var Connection $connection */
         $connection = $this->entityManager->getConnection();
-        $connection->executeStatement(
-            'UPDATE sylius_product_translation
+        $sql = 'UPDATE sylius_product_translation
                  SET ai_audit_content = :content,
                      ai_audit_score = :score,
                      ai_audit_updated_at = :updatedAt
-               WHERE translatable_id = :productId AND locale = :locale',
-            [
-                'content' => $content,
-                'score' => $score,
-                'updatedAt' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+               WHERE translatable_id = :productId AND locale = :locale';
+        $params = [
+            'content' => $content,
+            'score' => $score,
+            'updatedAt' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+            'productId' => $productId,
+            'locale' => $locale,
+        ];
+
+        try {
+            $connection->executeStatement($sql, $params);
+        } catch (ConnectionLost $exception) {
+            $this->logger->warning('DB connection lost during audit persistence, retrying once', [
                 'productId' => $productId,
                 'locale' => $locale,
-            ],
-        );
+                'message' => $exception->getMessage(),
+            ]);
+            $connection->close();
+            $connection->connect();
+            $connection->executeStatement($sql, $params);
+        }
     }
 
     private function fetchAuditFromDb(string $locale, int $productId): array
