@@ -67,6 +67,16 @@
                         transform: translateY(3px);
                     }
                 }
+
+                .ai-audit-inline {
+                    margin-top: 6px;
+                    padding: 6px 8px;
+                    border-left: 3px solid #f0ad4e;
+                    background: #fff8e1;
+                    color: #6c4b00;
+                    font-size: 0.85rem;
+                    line-height: 1.3;
+                }
             </style>
             <div class="mb-3">
                 <label class="form-label d-flex align-items-center gap-2 mb-2">
@@ -148,6 +158,8 @@
         const locales = {{ locales|json_encode|raw }};
         const loader = document.getElementById('ai-audit-loader');
         const auditRowsByLocale = new Map();
+        const inlineAuditBlockRegex = /AI_AUDIT_FIELDS:\s*([\s\S]*?)\s*END_AI_AUDIT_FIELDS/;
+        let lastFieldAudits = null;
 
         const localeDisplay = typeof Intl !== 'undefined' && typeof Intl.DisplayNames !== 'undefined'
             ? new Intl.DisplayNames([navigator.language || 'fr'], { type: 'language' })
@@ -220,6 +232,322 @@
             }
 
             return Math.max(0, Math.min(100, parsed));
+        };
+
+        const parseAuditText = (text) => {
+            const result = {
+                cleanedText: text || '',
+                fields: null,
+            };
+
+            if (!text) {
+                return result;
+            }
+
+            const match = text.match(inlineAuditBlockRegex);
+            if (!match) {
+                return result;
+            }
+
+            const jsonText = (match[1] || '').trim();
+            if (!jsonText) {
+                result.cleanedText = text.replace(match[0], '').trim();
+                return result;
+            }
+
+            try {
+                const payload = JSON.parse(jsonText);
+                if (payload && typeof payload === 'object' && payload.fields && typeof payload.fields === 'object') {
+                    result.fields = payload.fields;
+                }
+            } catch (e) {
+                // ignore invalid JSON blocks
+            }
+
+            result.cleanedText = text.replace(match[0], '').trim();
+            return result;
+        };
+
+        const normalizeText = (value) => {
+            return String(value || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/["'`]/g, '')
+                .replace(/[^a-z0-9]+/g, ' ')
+                .trim();
+        };
+
+        const tokenize = (value) => {
+            const normalized = normalizeText(value);
+            if (!normalized) {
+                return [];
+            }
+
+            return normalized
+                .split(' ')
+                .map((token) => token.replace(/s$/i, ''))
+                .filter((token) => token.length > 1);
+        };
+
+        const hasEnoughTokenOverlap = (sourceTokens, targetTokens) => {
+            if (!sourceTokens.length || !targetTokens.length) {
+                return false;
+            }
+
+            const targetSet = new Set(targetTokens);
+            const matchCount = sourceTokens.filter((token) => targetSet.has(token)).length;
+            return matchCount / sourceTokens.length >= 0.6;
+        };
+
+        const extractInlineIssues = (text) => {
+            const issues = [];
+            if (!text) {
+                return issues;
+            }
+
+            const pattern = /\[([^\]]+)\]\s*(?:→|->|=>)\s*\[([^\]]+)\]/g;
+            let match = null;
+            while ((match = pattern.exec(text)) !== null) {
+                const title = String(match[1] || '').trim();
+                const detail = String(match[2] || '').trim();
+                const combined = `${title} ${detail}`.trim();
+                if (title || detail) {
+                    issues.push({
+                        title,
+                        detail,
+                        normalizedTitle: normalizeText(title),
+                        normalizedText: normalizeText(combined),
+                        tokens: tokenize(combined),
+                    });
+                }
+            }
+
+            return issues;
+        };
+
+        const resolveInlineContainer = (target) => {
+            if (!target) {
+                return null;
+            }
+
+            return target.closest('.flex-grow-1')
+                || target.closest('.mb-3')
+                || target.closest('.form-group')
+                || target.closest('.field')
+                || target.parentElement;
+        };
+
+        const upsertInlineAudit = (target, message, fieldKey) => {
+            const trimmed = String(message || '').trim();
+            if (!trimmed) {
+                return;
+            }
+
+            const container = resolveInlineContainer(target);
+            if (!container) {
+                return;
+            }
+
+            const selector = fieldKey ? `.ai-audit-inline[data-ai-audit-field="${fieldKey}"]` : '.ai-audit-inline';
+            let node = container.querySelector(selector);
+            if (!node) {
+                node = document.createElement('div');
+                node.classList.add('ai-audit-inline');
+                if (fieldKey) {
+                    node.dataset.aiAuditField = fieldKey;
+                }
+                container.appendChild(node);
+            }
+            node.textContent = trimmed;
+        };
+
+        const clearInlineAudits = () => {
+            document.querySelectorAll('.ai-audit-inline').forEach((node) => node.remove());
+        };
+
+        const applyInlineAuditsFromText = (text, locale) => {
+            const issues = extractInlineIssues(text);
+            if (!issues.length) {
+                return;
+            }
+
+            const normalizedIssues = issues.filter((issue) => issue.normalizedText || issue.normalizedTitle);
+            if (!normalizedIssues.length) {
+                return;
+            }
+
+            const attributeFields = Array.from(document.querySelectorAll('#product-attributes input[type="hidden"][name$="[attribute]"]'))
+                .map((hiddenInput) => {
+                    const field = hiddenInput.closest('.field');
+                    if (!field) {
+                        return null;
+                    }
+
+                    const localeInput = field.querySelector('input[type="hidden"][name$="[localeCode]"]');
+                    const inputLocale = localeInput ? localeInput.value : null;
+                    const labelNode = field.querySelector('label');
+                    const label = labelNode ? labelNode.textContent.trim() : '';
+                    const attributeName = field.querySelector('[data-test-attribute-name]')?.getAttribute('data-test-attribute-name') || '';
+                    const attributeCode = hiddenInput.value || '';
+                    const input = field.querySelector('[data-test-attribute-name], input:not([type="hidden"]), textarea, select');
+
+                    return {
+                        field,
+                        input,
+                        inputLocale,
+                        label: label || attributeName,
+                        attributeCode,
+                    };
+                })
+                .filter((item) => item);
+
+            attributeFields.forEach((entry) => {
+                if (!entry) {
+                    return;
+                }
+
+                const inputLocale = entry.inputLocale;
+                if (locale && inputLocale && inputLocale !== locale) {
+                    return;
+                }
+
+                const label = entry.label || '';
+                const code = entry.attributeCode || '';
+                const labelTokens = tokenize(label);
+                const codeTokens = tokenize(code.replace(/_/g, ' '));
+                const labelNormalized = normalizeText(label);
+                const codeNormalized = normalizeText(code.replace(/_/g, ' '));
+
+                if (!labelTokens.length && !codeTokens.length) {
+                    return;
+                }
+
+                const match = normalizedIssues.find((issue) => {
+                    if (labelNormalized && issue.normalizedText.includes(labelNormalized)) {
+                        return true;
+                    }
+                    if (codeNormalized && issue.normalizedText.includes(codeNormalized)) {
+                        return true;
+                    }
+                    if (hasEnoughTokenOverlap(labelTokens, issue.tokens || tokenize(issue.title))) {
+                        return true;
+                    }
+                    if (hasEnoughTokenOverlap(codeTokens, issue.tokens || tokenize(issue.title))) {
+                        return true;
+                    }
+                    return false;
+                });
+                if (!match) {
+                    return;
+                }
+
+                const message = match.detail || match.title;
+                const key = labelNormalized || codeNormalized || normalizeText(label);
+                const target = entry.input || entry.field;
+                if (target) {
+                    upsertInlineAudit(target, message, `attribute_${key}`);
+                }
+            });
+        };
+
+        const applyInlineAudits = (fields) => {
+            clearInlineAudits();
+            if (!fields || typeof fields !== 'object') {
+                return;
+            }
+
+            const locale = localeSelect ? localeSelect.value : null;
+            const translationRoot = locale ? document.getElementById(`translation-product-translations-${locale}`) : null;
+
+            const translationFieldSelectors = {
+                name: ['input[name$="[name]"]'],
+                description: ['textarea[name$="[description]"]'],
+                shortDescription: ['textarea[name$="[shortDescription]"]'],
+                metaDescription: ['textarea[name$="[metaDescription]"]', 'input[name$="[metaDescription]"]'],
+                metaKeywords: ['textarea[name$="[metaKeywords]"]', 'input[name$="[metaKeywords]"]'],
+                metadataTitle: ['input[name$="[metadataTitle]"]', 'textarea[name$="[metadataTitle]"]'],
+                metadataDescription: ['textarea[name$="[metadataDescription]"]', 'input[name$="[metadataDescription]"]'],
+            };
+
+            if (translationRoot) {
+                Object.entries(translationFieldSelectors).forEach(([key, selectors]) => {
+                    const message = fields[key];
+                    if (!message) {
+                        return;
+                    }
+                    for (const selector of selectors) {
+                        const target = translationRoot.querySelector(selector);
+                        if (target) {
+                            upsertInlineAudit(target, message, key);
+                            break;
+                        }
+                    }
+                });
+            }
+
+            const generalFieldSelectors = {
+                brand: ['input[name$="[brand]"]'],
+                sku: ['input[name$="[sku]"]', 'input[name$="[seoSku]"]'],
+                gtin8: ['input[name$="[gtin8]"]', 'input[name$="[seoGtin8]"]'],
+                gtin13: ['input[name$="[gtin13]"]', 'input[name$="[seoGtin13]"]'],
+                gtin14: ['input[name$="[gtin14]"]', 'input[name$="[seoGtin14]"]'],
+                mpn: ['input[name$="[mpn]"]', 'input[name$="[seoMpn]"]'],
+                isbn: ['input[name$="[isbn]"]', 'input[name$="[seoIsbn]"]'],
+                code: ['input[name$="[code]"]'],
+            };
+
+            Object.entries(generalFieldSelectors).forEach(([key, selectors]) => {
+                const message = fields[key];
+                if (!message) {
+                    return;
+                }
+                for (const selector of selectors) {
+                    const target = document.querySelector(selector);
+                    if (target) {
+                        upsertInlineAudit(target, message, key);
+                        break;
+                    }
+                }
+            });
+
+            if (locale) {
+                Object.keys(fields)
+                    .filter((key) => key.startsWith('attribute_'))
+                    .forEach((key) => {
+                        const message = fields[key];
+                        if (!message) {
+                            return;
+                        }
+
+                        const attributeCode = key.replace('attribute_', '');
+                        const attributeTab = document.getElementById(attributeCode);
+                        if (!attributeTab) {
+                            return;
+                        }
+
+                        const fieldsInTab = Array.from(attributeTab.querySelectorAll('.field'));
+                        let matchingField = null;
+                        if (locale) {
+                            matchingField = fieldsInTab.find((field) => {
+                                const localeInput = field.querySelector('input[type="hidden"][name$="[localeCode]"]');
+                                return localeInput && localeInput.value === locale;
+                            }) || null;
+                        }
+                        if (!matchingField) {
+                            matchingField = fieldsInTab[0] || null;
+                        }
+
+                        if (!matchingField) {
+                            return;
+                        }
+
+                        const inputTarget = matchingField.querySelector('input:not([type="hidden"]), textarea, select');
+                        if (inputTarget) {
+                            upsertInlineAudit(inputTarget, message, key);
+                        }
+                    });
+            }
         };
 
         const buildUrl = (baseUrl) => {
@@ -321,16 +649,14 @@
                 }
 
                 const payload = await response.json();
-                if (payload.retour) {
-                    retourInput.value = payload.retour;
-                } else {
-                    retourInput.value = '';
-                }
+                const parsed = parseAuditText(payload.retour || '');
+                retourInput.value = parsed.cleanedText || '';
+                lastFieldAudits = parsed.fields;
 
                 if (payload.score !== null && payload.score !== undefined) {
                     setScore(payload.score);
-                } else if (payload.retour) {
-                    const extracted = extractScore(payload.retour);
+                } else if (parsed.cleanedText) {
+                    const extracted = extractScore(parsed.cleanedText);
                     if (extracted !== null) {
                         setScore(extracted);
                     }
@@ -346,6 +672,13 @@
                             wrapper.classList.remove('d-none');
                         }
                     }
+                }
+
+                if (parsed.fields && Object.values(parsed.fields).some((value) => String(value || '').trim() !== '')) {
+                    applyInlineAudits(parsed.fields);
+                } else {
+                    clearInlineAudits();
+                    applyInlineAuditsFromText(parsed.cleanedText, localeSelect ? localeSelect.value : null);
                 }
             } catch (e) {
                 // ignore initial load errors
@@ -373,7 +706,8 @@
                     }
 
                     const payload = await response.json();
-                    const text = payload.retour || '';
+                    const parsed = parseAuditText(payload.retour || '');
+                    const text = parsed.cleanedText || '';
                     const scoreFromPayload = payload.score ?? null;
                     const score = scoreFromPayload !== null && scoreFromPayload !== undefined
                         ? scoreFromPayload
@@ -401,6 +735,7 @@
         if (localeSelect) {
             localeSelect.addEventListener('change', () => {
                 bootstrapExisting();
+                applyInlineAudits(lastFieldAudits);
             });
         }
 
@@ -432,7 +767,9 @@
                     throw new Error('Reponse JSON invalide.');
                 }
 
-                const text = payload.retour;
+                const parsed = parseAuditText(payload.retour || '');
+                const text = parsed.cleanedText || '';
+                lastFieldAudits = parsed.fields;
                 retourInput.value = text;
 
                 const score = extractScore(text);
@@ -457,6 +794,12 @@
                     renderAuditTable(orderedRows);
                 }
 
+                if (parsed.fields && Object.values(parsed.fields).some((value) => String(value || '').trim() !== '')) {
+                    applyInlineAudits(parsed.fields);
+                } else {
+                    clearInlineAudits();
+                    applyInlineAuditsFromText(parsed.cleanedText, localeSelect ? localeSelect.value : null);
+                }
                 setStatus('Audit termine.', 'text-success');
             } catch (error) {
                 setStatus(error.message || 'Impossible de lancer l audit.', 'text-danger');
